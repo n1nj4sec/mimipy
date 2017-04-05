@@ -6,6 +6,11 @@ This is a port in python of @huntergregal's [mimipenguin.sh](https://github.com/
 - possibility to scan a process by pid
 - add some additional processes to scan like lightDM
 
+## Install
+```bash
+pip install -r requirements.txt
+```
+
 ## Usage
 ```bash
 usage: mimipy.py [-h] [--clean] [-v] [-p PID] [--search-password]
@@ -18,7 +23,7 @@ optional arguments:
     --search-password  prompt for your password and search it in all your processes !.
 ```
 ## Known issues
-    -sometimes one of the PTRACE call to overwrite memory with the --clean fail and you have to rerun the script
+- sometimes one of the PTRACE call to overwrite memory with the --clean fail and you have to rerun the script
 
 ## Contact
 by mail: contact@n1nj4.eu  
