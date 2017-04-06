@@ -35,7 +35,7 @@ try:
         from memorpy.version import version as memorpy_version
     except:
         memorpy_version=(0,0)
-    if memorpy_version<(1,3):
+    if memorpy_version<(1,4):
         logging.warning("memorpy version is too old, please update !")
         raise VersionError("memorpy version is too old, please update !")
         
@@ -46,10 +46,6 @@ except ImportError as e:
 LOOK_AFTER_SIZE=1000*10**3
 LOOK_BEFORE_SIZE=500*10**3
 
-HTTP_AUTH_REGEX = [
-    ("Basic", "(?:WWW-|Proxy-)?Authorization:\s+Basic\s+(?P<basic>[a-zA-Z0-9/\+]+={0,3})"), #TODO: digest, ntlm, ... hashes are still nice
-    #("GET/POST", "(email|log(in)?|user(name)?)=(?P<Login>[a-zA-Z0-9%_+*.:-]{1,25})?&.{0,10}?p[a]?[s]?[s]?[w]?[o]?[r]?[d]?=(?P<Password>[a-zA-Z0-9%_+*.:-]{1,25})&")
-]
 
 
 
@@ -237,6 +233,11 @@ def mimipy_loot_passwords(clean=False, optimizations='nsrx'):
                     logging.debug(traceback.format_exc())
                 finally:
                     logging.info("Process %s analysed in %s seconds"%(name, time.time()-start_time))
+
+HTTP_AUTH_REGEX = [
+    ("Basic", re.compile(r"(?:WWW-|Proxy-)?Authorization:\s+Basic\s+(?P<basic>[a-zA-Z0-9/\+]+={0,3})", re.IGNORECASE)), #TODO: digest, ntlm, ... hashes are still nice
+    ("GET/POST", re.compile(r"(:?e?mail(?:_?adress)?|log(?:in)?|user(?:name)?|session_key|user%5Bemail%5D)=(?P<Login>[a-zA-Z0-9%_+*.:-]{0,25})&.{0,10}?(?:[a-z]{1,10}_|user)?(?:pa?s?s?w?o?r?d?|mdp|%5Bpassword%5D)=(?P<Password>[a-zA-Z0-9%_+*.:-]{0,25})"), re.IGNORECASE)
+]
 
 rules = [
     {
