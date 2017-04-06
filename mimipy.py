@@ -173,7 +173,7 @@ def group_search(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx
         password=""
         if "basic" in x:
             try:
-                user, password=base64.b64decode(x).split(":",1)
+                user, password=base64.b64decode(x["basic"]).split(":",1)
             except:
                 pass
         elif "Login" in x and "Password" in x:
