@@ -168,7 +168,7 @@ def group_search(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx
     logging.info("Analysing process %s (%s) for passwords ..."%(name, pid))
     mw = MemWorker(name=name, pid=pid)
             
-    for service, x in mw.mem_search(rule["groups"], ftype='ngroups', optimizations=None):
+    for service, x in mw.mem_search(rule["groups"], ftype='ngroups', optimizations=optimizations):
         user=""
         password=""
         if "basic" in x:
