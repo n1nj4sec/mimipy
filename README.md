@@ -22,8 +22,6 @@ optional arguments:
     -p PID, --pid PID  choose the process's pid to scan instead of automatic selection
     --search-password  prompt for your password and search it in all your processes !.
 ```
-## Known issues
-- sometimes one of the PTRACE call to overwrite memory with the --clean fail and you have to rerun the script
 
 ## Contact
 by mail: contact@n1nj4.eu  
