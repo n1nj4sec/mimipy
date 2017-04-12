@@ -7,10 +7,12 @@ This is a port in python of @huntergregal's [mimipenguin.sh](https://github.com/
 - add some additional processes to scan like lightDM
 
 ## Install
+you can install memorpy and run mimipy.py or directly use the packed version that doesn't require any dependency
 ```bash
-#you can install memorpy and run mimipy.py or directly use the packed version that doesn't require any dependency
 python packed/mimipy.py
-#you can also use one the following oneliner :
+```
+you can also use one the following oneliner :
+```bash
 sudo python -c 'import urllib;exec urllib.urlopen("https://raw.githubusercontent.com/n1nj4sec/mimipy/master/packed/mimipy.py").read()'
 ```
 
