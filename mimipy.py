@@ -35,7 +35,7 @@ try:
         from memorpy.version import version as memorpy_version
     except:
         memorpy_version=(0,0)
-    if memorpy_version<(1,4):
+    if memorpy_version<(1,5):
         logging.warning("memorpy version is too old, please update !")
         raise VersionError("memorpy version is too old, please update !")
         
