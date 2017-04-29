@@ -57,8 +57,9 @@ except ImportError:
     allow_system_packages = True
     import ctypes
     import platform
-    libc = ctypes.CDLL(None)
-    syscall = libc.syscall
+    if sys.platform!="win32":
+        libc = ctypes.CDLL(None)
+        syscall = libc.syscall
     from tempfile import mkstemp
     from os import chmod, unlink, close, write
 
@@ -200,15 +201,38 @@ def pupy_add_package(pkdic, compressed=False, name=None):
     memtrace(name)
 
 def has_module(name):
-    global module
     return name in sys.modules
 
 def invalidate_module(name):
-    global module
-    if not name in sys.modules:
-        raise ValueError('Module {} is not loaded yet'.format(name))
+    global modules
+    global __debug
 
-    del sys.modules[name]
+    for item in modules.keys():
+        if item == name or item.startswith(name+'.'):
+            dprint('Remove {} from pupyimporter.modules'.format(item))
+            del modules[item]
+
+    for item in sys.modules.keys():
+        if not (item == name or item.startswith(name+'.')):
+            continue
+
+        mid = id(sys.modules[item])
+
+        dprint('Remove {} from sys.modules'.format(item))
+        del sys.modules[item]
+
+        if hasattr(pupy, 'namespace'):
+            dprint('Remove {} from rpyc namespace'.format(item))
+            pupy.namespace.__invalidate__(item)
+
+        if __debug:
+            for obj in gc.get_objects():
+                if id(obj) == mid:
+                    dprint('Module {} still referenced by {}'.format(
+                        item, [ id(x) for x in gc.get_referrers(obj) ]
+                    ))
+
+    gc.collect()
 
 def native_import(name):
     __import__(name)
@@ -281,7 +305,7 @@ class PupyPackageLoader:
 
             import traceback
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            traceback.print_tb(exc_traceback)
+            sys.stderr.write('Error importing %s : %s'%(fullname, traceback.format_exc()))
             dprint('PupyPackageLoader: '
                        'Error while loading package {} ({}) : {}'.format(
                            fullname, self.path, str(e)))
@@ -424,8 +448,8 @@ def install(debug=None, trace=False):
     global __trace
     global modules
 
-    if debug:
-        __debug = True
+    #if debug:
+    #    __debug = True
 
     if trace:
         __trace = trace
@@ -469,6 +493,8 @@ def install(debug=None, trace=False):
     ctypes.util._system_find_library = ctypes.util.find_library
 
     def pupy_make_path(name):
+        if not name:
+            return
         if 'pupy:' in name:
             name = name[name.find('pupy:')+5:]
             name = os.path.relpath(name)
@@ -479,9 +505,10 @@ def install(debug=None, trace=False):
         return name
 
     def pupy_find_library(name):
-        dprint("FIND LIBRARY: {}".format(name))
-        if name in modules:
-            return name
+        pupyized = pupy_make_path(name)
+        if pupyized in modules:
+            dprint("FIND LIBRARY: {} => {}".format(name, pupyized))
+            return pupyized
         else:
             return ctypes.util._system_find_library(name)
 
@@ -516,6 +543,7 @@ def install(debug=None, trace=False):
                 self._FuncPtr_orig = self._FuncPtr
                 self._FuncPtr = self._find_function_address
                 self._name = pupy_make_path(self._name)
+                dprint('CDLL({})'.format(self._name))
 
             def _find_function_address(self, search_tuple):
                 name, handle = search_tuple
@@ -535,8 +563,8 @@ def install(debug=None, trace=False):
     ctypes._dlopen = pupy_dlopen
     ctypes.util.find_library = pupy_find_library
 
-    if 'win' in sys.platform:
-        import pywintypes
+    #if 'win' in sys.platform:
+    #    import pywintypes
     if __debug:
         print 'Bundled modules:'
         for module in modules.iterkeys():
