@@ -1,10 +1,12 @@
 # Mimipy
-This is a port in python of @huntergregal's [mimipenguin.sh](https://github.com/huntergregal/mimipenguin) bash script with some improvments :
-- no memory dump written on disk
-- possibility to mitigate the attack by overwriting passwords found in memory (you might want to add a cron)
-- possibility to search for any trace of your password in all your processes
-- possibility to scan a process by pid
-- add some additional processes to scan like lightDM
+Tool to dump passwords from various processes memory. Works on windows/linux/OSX !
+Features :
+- Embbed technique from @huntergregal's [mimipenguin.sh](https://github.com/huntergregal/mimipenguin) to dump passwords from gnome-keyring with some additional features :
+    - can dump passwords from lightDM
+    - possibility to mitigate the attack by overwriting passwords found in memory (you might want to add a cron)
+- find GET/POST/Basic passwords from browsers memory or HTTP Servers
+- function to search for any trace of your password in all your processes
+- function to scan a process by pid with all techniques available
 
 ## Install
 you can install memorpy and run mimipy.py or directly use the packed version that doesn't require any dependency
