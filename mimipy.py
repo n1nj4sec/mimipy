@@ -420,6 +420,7 @@ if __name__=="__main__":
     """, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--clean', action='store_true', help='@blueteams protect yourself and clean found passwords from memory ! You might want to regularly run this on your workstation/servers')
     parser.add_argument('-v', '--verbose', action='store_true', help='be more verbose !')
+    parser.add_argument('-d', '--debug', action='store_true', help='be a lot more verbose !')
     parser.add_argument('-n', '--no-optimize', action='store_true', help='disable optimisations (search the whole memory whatever region perms are) (slower)')
     parser.add_argument('-p', '--pid', type=int, help='choose the process\'s pid to scan instead of automatic selection')
     parser.add_argument('-i', '--ignore', action='append', help='ignore a process. This option can be used multiple times. ex: -i apache2 -i firefox')
@@ -427,11 +428,13 @@ if __name__=="__main__":
     parser.add_argument('-m', '--search-mode', choices=["cleartext", "xor", "b64", "all", "no-cleartext"], default='cleartext', help='search for different obfuscations methods')
     args = parser.parse_args()
 
-    if args.verbose:
+    if args.debug:
+        logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    elif args.verbose:
         logging.basicConfig(stream=sys.stderr, level=logging.INFO)
     else:
         logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
-    logging.basicConfig(filename='example.log', level=logging.DEBUG)
+    #logging.basicConfig(filename='example.log', level=logging.DEBUG)
 
     total_time=time.time()
 
