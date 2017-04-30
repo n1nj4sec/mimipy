@@ -20,14 +20,29 @@ sudo python -c 'import urllib;exec urllib.urlopen("https://raw.githubusercontent
 
 ## Usage
 ```bash
-usage: mimipy.py [-h] [--clean] [-v] [-p PID] [--search-password]
+usage: mimipy.py [-h] [--clean] [-v] [-n] [-p PID] [-i IGNORE]
+                 [--search-password] [-m {cleartext,xor,b64,all,no-cleartext}]
+
+    mimipy can loot passwords from memory or overwrite them to mitigate mimipenguin's dumps !
+
+    Author: Nicolas VERDIER (contact@n1nj4.eu)
+    orginal mimipenguin.sh script and idea from @huntergregal
+    Bleeding Edge version: https://github.com/n1nj4sec/mimipy
+
+
 
 optional arguments:
-    -h, --help         show this help message and exit
-    --clean            @blueteams protect yourself and clean found passwords from memory ! You might want to regularly run this on your workstation/servers
-    -v, --verbose      be more verbose !
-    -p PID, --pid PID  choose the process's pid to scan instead of automatic selection
-    --search-password  prompt for your password and search it in all your processes !.
+  -h, --help            show this help message and exit
+  --clean               @blueteams protect yourself and clean found passwords from memory ! You might want to regularly run this on your workstation/servers
+  -v, --verbose         be more verbose !
+  -n, --no-optimize     disable optimisations (search the whole memory whatever region perms are) (slower)
+  -p PID, --pid PID     choose the process's pid to scan instead of automatic selection
+  -i IGNORE, --ignore IGNORE
+                        ignore a process. This option can be used multiple times. ex: -i apache2 -i firefox
+  --search-password     prompt for your password and search it in all your processes !.
+  -m {cleartext,xor,b64,all,no-cleartext}, --search-mode {cleartext,xor,b64,all,no-cleartext}
+                        search for different obfuscations methods
+
 ```
 
 ## Contact
